@@ -1,0 +1,5 @@
+-- AlterEnum
+ALTER TYPE "NotificationType" ADD VALUE 'ORDER_CONFIRMED';
+
+-- AlterEnum
+ALTER TYPE "OrderStatus" ADD VALUE 'AWAITING_PAYMENT';

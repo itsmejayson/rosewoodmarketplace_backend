@@ -6,11 +6,13 @@ const { success } = require('../utils/response');
 const { AppError } = require('../middleware/error.middleware');
 const env = require('../config/env');
 
-webpush.setVapidDetails(
-  env.VAPID_EMAIL,
-  env.VAPID_PUBLIC_KEY,
-  env.VAPID_PRIVATE_KEY
-);
+if (env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    env.VAPID_EMAIL || 'mailto:admin@rosewoodmarketplace.com',
+    env.VAPID_PUBLIC_KEY,
+    env.VAPID_PRIVATE_KEY
+  );
+}
 
 // GET /api/push/vapid-key — return public key to frontend
 router.get('/vapid-key', (req, res) => {

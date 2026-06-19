@@ -23,7 +23,8 @@ function isSameOptions(a, b) {
 //   2. sum of variant priceModifiers + addon prices  — for items added before unitPrice stamping;
 //      works because single-select variant priceModifier = full price of that option
 //   3. product.price  — plain product with no variants
-const resolveUnitPrice = (productPrice, opts = {}) => {
+const resolveUnitPrice = (productPrice, opts) => {
+  if (!opts) return parseFloat(productPrice);
   if (opts.unitPrice != null) return parseFloat(opts.unitPrice);
   const variants = opts.variants || [];
   const addons   = opts.addons   || [];
@@ -77,13 +78,15 @@ const addItem = async (req, res, next) => {
       throw new AppError(`Only ${product.stockQty} units available`, 400);
     }
 
-    let cart = await prisma.cart.findUnique({
+    // upsert avoids a P2002 race condition when the cart row disappears between
+    // the findUnique and create (e.g. after clearCart sets local state to null).
+    const cart = await prisma.cart.upsert({
       where: { buyerId: req.user.id },
+      create: { buyerId: req.user.id },
+      update: {},
       include: { cartItems: { include: { product: { select: { sellerId: true } } }, take: 1 } },
     });
-    if (!cart) {
-      cart = await prisma.cart.create({ data: { buyerId: req.user.id } });
-    } else if (cart.cartItems.length > 0) {
+    if (cart.cartItems.length > 0) {
       const cartSellerId = cart.cartItems[0].product.sellerId;
       if (cartSellerId !== product.sellerId) {
         throw new AppError(

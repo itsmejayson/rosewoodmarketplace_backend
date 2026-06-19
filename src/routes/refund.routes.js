@@ -57,7 +57,7 @@ router.patch('/:orderId/process', authenticate, authorize('SELLER', 'ADMIN'), as
 
     const refund = await prisma.refund.findUnique({
       where: { orderId },
-      include: { order: { include: { orderItems: { take: 1 } } } },
+      include: { order: { include: { orderItems: true } } },
     });
     if (!refund) throw new AppError('Refund request not found', 404);
     if (refund.status !== 'PENDING') throw new AppError('This refund has already been processed', 400);
@@ -81,7 +81,16 @@ router.patch('/:orderId/process', authenticate, authorize('SELLER', 'ADMIN'), as
         },
       }),
       ...(approved
-        ? [prisma.order.update({ where: { id: orderId }, data: { status: 'REFUNDED' } })]
+        ? [
+            prisma.order.update({ where: { id: orderId }, data: { status: 'REFUNDED' } }),
+            // Decrement salesCount for each product in the order
+            ...refund.order.orderItems.map((item) =>
+              prisma.product.update({
+                where: { id: item.productId },
+                data: { salesCount: { decrement: item.quantity } },
+              })
+            ),
+          ]
         : []),
     ]);
 

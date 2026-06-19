@@ -2,6 +2,21 @@ const prisma = require('../config/db');
 const { success } = require('../utils/response');
 const { AppError } = require('../middleware/error.middleware');
 
+// Compare two selectedOptions objects by variant optionIds and addon IDs only.
+// Ignores unitPrice (derived value) to avoid floating-point mismatch false negatives.
+function isSameOptions(a, b) {
+  const noA = !a || (!a.variants?.length && !a.addons?.length);
+  const noB = !b || (!b.variants?.length && !b.addons?.length);
+  if (noA && noB) return true;
+  if (noA !== noB) return false;
+  const aVariants = (a.variants || []).map((v) => v.optionId).sort().join(',');
+  const bVariants = (b.variants || []).map((v) => v.optionId).sort().join(',');
+  if (aVariants !== bVariants) return false;
+  const aAddons = (a.addons || []).map((x) => x.addonId).sort().join(',');
+  const bAddons = (b.addons || []).map((x) => x.addonId).sort().join(',');
+  return aAddons === bAddons;
+}
+
 // Resolve the correct unit price for a cart/order item.
 // Priority:
 //   1. opts.unitPrice  — stamped by the modal at add-to-cart time (most accurate)
@@ -78,13 +93,10 @@ const addItem = async (req, res, next) => {
       }
     }
 
-    const serialized = JSON.stringify(selectedOptions ?? null);
     const candidates = await prisma.cartItem.findMany({
       where: { cartId: cart.id, productId },
     });
-    const match = candidates.find(
-      (c) => JSON.stringify(c.selectedOptions ?? null) === serialized
-    );
+    const match = candidates.find((c) => isSameOptions(c.selectedOptions, selectedOptions));
     let cartItem;
     if (match) {
       const newQty = match.quantity + (quantity || 1);

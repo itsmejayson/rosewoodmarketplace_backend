@@ -95,6 +95,21 @@ router.get('/product/:productId', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/reviews/seller — all reviews for seller's products
+router.get('/seller', authenticate, async (req, res, next) => {
+  try {
+    const reviews = await prisma.review.findMany({
+      where: { sellerId: req.user.id },
+      include: {
+        buyer: { select: { id: true, fullName: true, profileImage: true } },
+        product: { select: { id: true, name: true, slug: true, images: { where: { isPrimary: true }, take: 1 } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return success(res, reviews);
+  } catch (err) { next(err); }
+});
+
 // GET /api/reviews/my — buyer's own reviews
 router.get('/my', authenticate, async (req, res, next) => {
   try {

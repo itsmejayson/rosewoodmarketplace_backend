@@ -89,9 +89,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  defaultDeliveryFee Decimal? @db.Decimal(10, 2)
-  storeDescription   String?
-  storeAddress       String?
+  defaultDeliveryFee     Decimal? @db.Decimal(10, 2)
+  storeDescription       String?
+  storeAddress           String?
+  proofDocument          String?
+  proofDocumentPublicId  String?
 
   products        Product[]
   orders          Order[]

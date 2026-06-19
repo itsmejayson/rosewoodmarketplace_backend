@@ -21,6 +21,23 @@ const upload = multer({
   },
 });
 
+// Accepts images AND PDF/DOC/DOCX for seller proof documents (10 MB limit)
+const ALLOWED_DOC_MIMES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+const documentUploadRaw = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || ALLOWED_DOC_MIMES.has(file.mimetype)) {
+      return cb(null, true);
+    }
+    cb(new Error('Only images, PDF, or Word documents are allowed'));
+  },
+});
+
 // Upload a single buffer to Cloudinary and return { url, public_id }
 const uploadBuffer = (buffer, options = {}) => {
   return new Promise((resolve, reject) => {
@@ -75,6 +92,32 @@ const uploadToCloudinary = (field, many = false) => {
   };
 };
 
+// Single-field document upload middleware (images + PDF/DOC)
+const uploadDocumentToCloudinary = (field) => {
+  return async (req, res, next) => {
+    documentUploadRaw.single(field)(req, res, async (err) => {
+      if (err) return next(err);
+      if (!req.file) return next();
+      try {
+        const isImage = req.file.mimetype.startsWith('image/');
+        const result = await uploadBuffer(req.file.buffer, {
+          resource_type: isImage ? 'image' : 'raw',
+          folder: 'rosewood-marketplace/proof-documents',
+          // No image transformation for documents
+          transformation: isImage
+            ? [{ width: 1600, height: 1600, crop: 'limit', quality: 'auto' }]
+            : [],
+        });
+        req.file.path = result.url;
+        req.file.filename = result.public_id;
+        next();
+      } catch (uploadErr) {
+        next(uploadErr);
+      }
+    });
+  };
+};
+
 const deleteImage = (publicId) => cloudinary.uploader.destroy(publicId);
 
 module.exports = {
@@ -82,6 +125,7 @@ module.exports = {
   upload: {
     single: (field) => uploadToCloudinary(field, false),
     array: (field, _max) => uploadToCloudinary(field, true),
+    document: (field) => uploadDocumentToCloudinary(field),
   },
   uploadBuffer,
   deleteImage,

@@ -308,6 +308,7 @@ const getPendingSellers = async (req, res, next) => {
       select: {
         id: true, fullName: true, email: true, phone: true,
         storeName: true, createdAt: true, isActive: true,
+        proofDocument: true,
       },
       orderBy: { createdAt: 'desc' },
     });

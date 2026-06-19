@@ -13,13 +13,16 @@ const generateTokens = (userId) => {
   return { accessToken, refreshToken };
 };
 
-const register = async ({ fullName, email, password, phone, role, storeName }) => {
+const register = async ({ fullName, email, password, phone, role, storeName }, fileInfo = {}) => {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) throw new AppError('Email already registered', 409);
 
   const resolvedRole = (role || 'BUYER').toUpperCase();
   if (resolvedRole === 'SELLER' && !storeName?.trim()) {
     throw new AppError('Store name is required for sellers', 400);
+  }
+  if (resolvedRole === 'SELLER' && !fileInfo.proofDocumentUrl) {
+    throw new AppError('Proof of residency document is required for seller registration', 400);
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
@@ -36,6 +39,8 @@ const register = async ({ fullName, email, password, phone, role, storeName }) =
       role: resolvedRole,
       storeName: resolvedRole === 'SELLER' ? storeName.trim() : null,
       isApproved,
+      proofDocument: fileInfo.proofDocumentUrl ?? null,
+      proofDocumentPublicId: fileInfo.proofDocumentPublicId ?? null,
     },
     select: { id: true, fullName: true, email: true, role: true, storeName: true, createdAt: true, isApproved: true },
   });

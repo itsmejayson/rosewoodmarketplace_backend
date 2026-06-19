@@ -3,7 +3,10 @@ const { success, created, error } = require('../utils/response');
 
 const register = async (req, res, next) => {
   try {
-    const result = await authService.register(req.body);
+    const result = await authService.register(req.body, {
+      proofDocumentUrl: req.file?.path,
+      proofDocumentPublicId: req.file?.filename,
+    });
     return created(res, result, 'Registration successful');
   } catch (err) {
     next(err);

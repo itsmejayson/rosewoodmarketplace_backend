@@ -20,6 +20,10 @@ const env = {
   // GCash merchant number shown on QR instructions (optional)
   GCASH_MERCHANT_NUMBER: process.env.GCASH_MERCHANT_NUMBER || '',
   GCASH_MERCHANT_NAME: process.env.GCASH_MERCHANT_NAME || 'Rosewood Marketplace',
+
+  VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+  VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+  VAPID_EMAIL: process.env.VAPID_EMAIL || 'mailto:admin@rosewoodmarketplace.com',
 };
 
 const required = ['DATABASE_URL', 'JWT_SECRET'];

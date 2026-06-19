@@ -20,5 +20,7 @@ router.put('/:id', authorize('SELLER', 'ADMIN'), productController.updateProduct
 router.delete('/:id', authorize('SELLER', 'ADMIN'), productController.deleteProduct);
 router.post('/:id/images', authorize('SELLER', 'ADMIN'), upload.array('images', 5), productController.uploadProductImages);
 router.delete('/:id/images/:imageId', authorize('SELLER', 'ADMIN'), productController.deleteProductImage);
+router.put('/:id/variants', authorize('SELLER', 'ADMIN'), productController.upsertVariants);
+router.put('/:id/addons', authorize('SELLER', 'ADMIN'), productController.upsertAddons);
 
 module.exports = router;

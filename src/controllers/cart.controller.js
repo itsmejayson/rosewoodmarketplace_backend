@@ -2,6 +2,23 @@ const prisma = require('../config/db');
 const { success } = require('../utils/response');
 const { AppError } = require('../middleware/error.middleware');
 
+// Resolve the correct unit price for a cart/order item.
+// Priority:
+//   1. opts.unitPrice  — stamped by the modal at add-to-cart time (most accurate)
+//   2. sum of variant priceModifiers + addon prices  — for items added before unitPrice stamping;
+//      works because single-select variant priceModifier = full price of that option
+//   3. product.price  — plain product with no variants
+const resolveUnitPrice = (productPrice, opts = {}) => {
+  if (opts.unitPrice != null) return parseFloat(opts.unitPrice);
+  const variants = opts.variants || [];
+  const addons   = opts.addons   || [];
+  if (variants.length > 0) {
+    return variants.reduce((s, v) => s + (parseFloat(v.priceModifier) || 0), 0)
+         + addons.reduce((s, a)   => s + (parseFloat(a.price)         || 0), 0);
+  }
+  return parseFloat(productPrice) + addons.reduce((s, a) => s + (parseFloat(a.price) || 0), 0);
+};
+
 const getCart = async (req, res, next) => {
   try {
     const cart = await prisma.cart.findUnique({
@@ -24,10 +41,10 @@ const getCart = async (req, res, next) => {
       return success(res, { cartItems: [], subtotal: 0, itemCount: 0 });
     }
 
-    const subtotal = cart.cartItems.reduce(
-      (sum, item) => sum + parseFloat(item.product.price) * item.quantity,
-      0
-    );
+    const subtotal = cart.cartItems.reduce((sum, item) => {
+      const unitPrice = resolveUnitPrice(item.product.price, item.selectedOptions);
+      return sum + unitPrice * item.quantity;
+    }, 0);
     const itemCount = cart.cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
     return success(res, { ...cart, subtotal, itemCount });
@@ -36,7 +53,7 @@ const getCart = async (req, res, next) => {
 
 const addItem = async (req, res, next) => {
   try {
-    const { productId, quantity } = req.body;
+    const { productId, quantity, selectedOptions } = req.body;
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new AppError('Product not found', 404);
@@ -61,21 +78,25 @@ const addItem = async (req, res, next) => {
       }
     }
 
-    const existing = await prisma.cartItem.findUnique({
-      where: { cartId_productId: { cartId: cart.id, productId } },
+    const serialized = JSON.stringify(selectedOptions ?? null);
+    const candidates = await prisma.cartItem.findMany({
+      where: { cartId: cart.id, productId },
     });
-
+    const match = candidates.find(
+      (c) => JSON.stringify(c.selectedOptions ?? null) === serialized
+    );
     let cartItem;
-    if (existing) {
-      const newQty = existing.quantity + quantity;
+    if (match) {
+      const newQty = match.quantity + (quantity || 1);
       if (product.stockQty < newQty) throw new AppError(`Only ${product.stockQty} units available`, 400);
       cartItem = await prisma.cartItem.update({
-        where: { id: existing.id },
+        where: { id: match.id },
         data: { quantity: newQty },
       });
     } else {
+      if (product.stockQty < (quantity || 1)) throw new AppError(`Only ${product.stockQty} units available`, 400);
       cartItem = await prisma.cartItem.create({
-        data: { cartId: cart.id, productId, quantity },
+        data: { cartId: cart.id, productId, quantity: quantity || 1, selectedOptions: selectedOptions ?? undefined },
       });
     }
 
@@ -86,20 +107,33 @@ const addItem = async (req, res, next) => {
 const updateItem = async (req, res, next) => {
   try {
     const { productId } = req.params;
-    const { quantity } = req.body;
+    const { quantity, itemId } = req.body;
 
     const cart = await prisma.cart.findUnique({ where: { buyerId: req.user.id } });
     if (!cart) throw new AppError('Cart not found', 404);
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
-    if (product.stockQty < quantity) {
+    if (product && product.stockQty < quantity) {
       throw new AppError(`Only ${product.stockQty} units available`, 400);
     }
 
-    const cartItem = await prisma.cartItem.update({
-      where: { cartId_productId: { cartId: cart.id, productId } },
-      data: { quantity },
-    });
+    let cartItem;
+    if (itemId) {
+      cartItem = await prisma.cartItem.update({
+        where: { id: itemId },
+        data: { quantity },
+      });
+    } else {
+      const item = await prisma.cartItem.findFirst({
+        where: { cartId: cart.id, productId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!item) throw new AppError('Item not found in cart', 404);
+      cartItem = await prisma.cartItem.update({
+        where: { id: item.id },
+        data: { quantity },
+      });
+    }
 
     return success(res, cartItem, 'Cart updated');
   } catch (err) { next(err); }
@@ -108,12 +142,24 @@ const updateItem = async (req, res, next) => {
 const removeItem = async (req, res, next) => {
   try {
     const { productId } = req.params;
+    const { itemId } = req.body || {};
     const cart = await prisma.cart.findUnique({ where: { buyerId: req.user.id } });
     if (!cart) throw new AppError('Cart not found', 404);
 
-    await prisma.cartItem.delete({
-      where: { cartId_productId: { cartId: cart.id, productId } },
-    });
+    if (itemId) {
+      // Delete by specific cart item id (supports multiple variants of same product)
+      const item = await prisma.cartItem.findUnique({ where: { id: itemId } });
+      if (!item || item.cartId !== cart.id) throw new AppError('Item not found in cart', 404);
+      await prisma.cartItem.delete({ where: { id: itemId } });
+    } else {
+      // Delete the most recent item with this productId
+      const item = await prisma.cartItem.findFirst({
+        where: { cartId: cart.id, productId },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!item) throw new AppError('Item not found in cart', 404);
+      await prisma.cartItem.delete({ where: { id: item.id } });
+    }
 
     return success(res, null, 'Item removed from cart');
   } catch (err) { next(err); }

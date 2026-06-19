@@ -1,6 +1,8 @@
 const prisma = require('../config/db');
 const { success, paginated } = require('../utils/response');
 const { AppError } = require('../middleware/error.middleware');
+const { authenticate } = require('../middleware/auth.middleware');
+const { authorize } = require('../middleware/role.middleware');
 
 const listStores = async (req, res, next) => {
   try {
@@ -43,7 +45,16 @@ const getStore = async (req, res, next) => {
 
     const seller = await prisma.user.findFirst({
       where: { id: sellerId, role: 'SELLER', isActive: true },
-      select: { id: true, storeName: true, fullName: true, profileImage: true, createdAt: true },
+      select: {
+        id: true,
+        storeName: true,
+        fullName: true,
+        profileImage: true,
+        createdAt: true,
+        defaultDeliveryFee: true,
+        storeDescription: true,
+        storeAddress: true,
+      },
     });
     if (!seller) throw new AppError('Store not found', 404);
 
@@ -54,7 +65,7 @@ const getStore = async (req, res, next) => {
       ...(categoryId ? { categoryId } : {}),
     };
 
-    const [products, total] = await Promise.all([
+    const [products, total, reviewAggregate] = await Promise.all([
       prisma.product.findMany({
         where: productWhere,
         include: { images: { where: { isPrimary: true }, take: 1 }, category: true },
@@ -63,14 +74,48 @@ const getStore = async (req, res, next) => {
         take: parseInt(limit),
       }),
       prisma.product.count({ where: productWhere }),
+      prisma.review.aggregate({
+        where: { sellerId },
+        _avg: { rating: true },
+        _count: { rating: true },
+      }),
     ]);
 
     return success(res, {
-      seller,
+      seller: {
+        ...seller,
+        avgRating: reviewAggregate._avg.rating
+          ? parseFloat(reviewAggregate._avg.rating.toFixed(2))
+          : null,
+        reviewCount: reviewAggregate._count.rating,
+      },
       products,
       meta: { total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) },
     });
   } catch (err) { next(err); }
 };
 
-module.exports = { listStores, getStore };
+const updateStoreSettings = async (req, res, next) => {
+  try {
+    const { defaultDeliveryFee, storeDescription, storeAddress } = req.body;
+
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        ...(defaultDeliveryFee !== undefined && { defaultDeliveryFee: parseFloat(defaultDeliveryFee) }),
+        ...(storeDescription !== undefined && { storeDescription }),
+        ...(storeAddress !== undefined && { storeAddress }),
+      },
+      select: {
+        id: true,
+        storeName: true,
+        defaultDeliveryFee: true,
+        storeDescription: true,
+        storeAddress: true,
+      },
+    });
+    return success(res, updated, 'Store settings updated');
+  } catch (err) { next(err); }
+};
+
+module.exports = { listStores, getStore, updateStoreSettings };

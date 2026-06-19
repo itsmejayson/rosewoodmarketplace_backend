@@ -3,6 +3,18 @@ const prisma = require('../config/db');
 const { AppError } = require('../middleware/error.middleware');
 const notificationService = require('./notification.service');
 const { getIO } = require('../config/socket');
+// Same logic as cart.controller resolveUnitPrice — kept in sync manually.
+// Priority: stamped unitPrice → sum of variant modifiers → product base price
+const resolveUnitPrice = (productPrice, opts = {}) => {
+  if (opts.unitPrice != null) return parseFloat(opts.unitPrice);
+  const variants = opts.variants || [];
+  const addons   = opts.addons   || [];
+  if (variants.length > 0) {
+    return variants.reduce((s, v) => s + (parseFloat(v.priceModifier) || 0), 0)
+         + addons.reduce((s, a)   => s + (parseFloat(a.price)         || 0), 0);
+  }
+  return parseFloat(productPrice) + addons.reduce((s, a) => s + (parseFloat(a.price) || 0), 0);
+};
 
 const generateOrderNumber = () => {
   const ts = Date.now().toString(36).toUpperCase();
@@ -39,9 +51,9 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
     }
   }
 
-  const subtotal = cart.cartItems.reduce(
-    (sum, i) => sum + parseFloat(i.product.price) * i.quantity, 0
-  );
+  const subtotal = cart.cartItems.reduce((sum, i) =>
+    sum + resolveUnitPrice(i.product.price, i.selectedOptions) * i.quantity
+  , 0);
   const shippingFee = 0;
   const tax = 0;
   const totalAmount = subtotal;
@@ -72,15 +84,19 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
       totalAmount,
       ...shippingDetails,
       orderItems: {
-        create: cart.cartItems.map((item) => ({
-          productId: item.productId,
-          sellerId: item.product.sellerId,
-          quantity: item.quantity,
-          unitPrice: item.product.price,
-          totalPrice: parseFloat(item.product.price) * item.quantity,
-          productName: item.product.name,
-          productImage: item.product.images[0]?.url || null,
-        })),
+        create: cart.cartItems.map((item) => {
+          const unitPrice = resolveUnitPrice(item.product.price, item.selectedOptions);
+          return {
+            productId: item.productId,
+            sellerId: item.product.sellerId,
+            quantity: item.quantity,
+            unitPrice,
+            totalPrice: unitPrice * item.quantity,
+            productName: item.product.name,
+            productImage: item.product.images[0]?.url || null,
+            selectedOptions: item.selectedOptions || undefined,
+          };
+        }),
       },
     },
     include: { orderItems: true },
@@ -99,7 +115,6 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
       amount: totalAmount,
       currency: 'PHP',
       paymentStatus: 'PENDING',
-      orderStatus: 'PENDING',
       orderStatus: initialStatus,
       logs: {
         create: {

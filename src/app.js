@@ -28,6 +28,11 @@ const transactionRoutes = require('./routes/transaction.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const messageRoutes = require('./routes/message.routes');
 const storeRoutes = require('./routes/store.routes');
+const favoriteRoutes = require('./routes/favorite.routes');
+const addressRoutes = require('./routes/address.routes');
+const reviewRoutes = require('./routes/review.routes');
+const refundRoutes = require('./routes/refund.routes');
+const disputeRoutes = require('./routes/dispute.routes');
 
 const app = express();
 
@@ -71,6 +76,12 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/stores', storeRoutes);
+app.use('/api/favorites', favoriteRoutes);
+app.use('/api/addresses', addressRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/refunds', refundRoutes);
+app.use('/api/disputes', disputeRoutes);
+app.use('/api/push', require('./routes/push.routes'));
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.path} not found` });

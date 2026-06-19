@@ -1,6 +1,38 @@
 const prisma = require('../config/db');
 const { getIO } = require('../config/socket');
 const logger = require('../utils/logger');
+const webpush = require('web-push');
+const env = require('../config/env');
+
+// Only set VAPID if keys are configured
+if (env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    env.VAPID_EMAIL || 'mailto:admin@rosewoodmarketplace.com',
+    env.VAPID_PUBLIC_KEY,
+    env.VAPID_PRIVATE_KEY
+  );
+}
+
+const sendPushToUser = async (userId, payload) => {
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return;
+  try {
+    const subs = await prisma.pushSubscription.findMany({ where: { userId } });
+    const dead = [];
+    await Promise.all(subs.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          JSON.stringify(payload)
+        );
+      } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) dead.push(sub.endpoint);
+      }
+    }));
+    if (dead.length > 0) {
+      await prisma.pushSubscription.deleteMany({ where: { endpoint: { in: dead } } });
+    }
+  } catch {}
+};
 
 const createNotification = async ({ userId, type, title, message, data }) => {
   try {
@@ -15,6 +47,13 @@ const createNotification = async ({ userId, type, title, message, data }) => {
     } catch {
       // Socket may not be initialized in test environments
     }
+
+    // Fire push notification (non-blocking)
+    sendPushToUser(userId, {
+      title,
+      body: message,
+      data: data || {},
+    }).catch(() => {});
 
     return notification;
   } catch (err) {

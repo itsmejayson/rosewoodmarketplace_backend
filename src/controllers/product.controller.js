@@ -62,8 +62,10 @@ const getProduct = async (req, res, next) => {
       where: { slug },
       include: {
         images: { orderBy: { order: 'asc' } },
-        category: true,
+        category: { select: { id: true, name: true, slug: true } },
         seller: { select: { id: true, fullName: true, storeName: true, profileImage: true } },
+        variantGroups: { include: { options: true }, orderBy: { name: 'asc' } },
+        addons: { orderBy: { name: 'asc' } },
       },
     });
     if (!product) throw new AppError('Product not found', 404);
@@ -79,7 +81,12 @@ const getSellerProductById = async (req, res, next) => {
   try {
     const product = await prisma.product.findFirst({
       where: { id: req.params.id, sellerId: req.user.id },
-      include: { images: { orderBy: { order: 'asc' } }, category: true },
+      include: {
+        images: { orderBy: { order: 'asc' } },
+        category: true,
+        variantGroups: { include: { options: true }, orderBy: { name: 'asc' } },
+        addons: { orderBy: { name: 'asc' } },
+      },
     });
     if (!product) throw new AppError('Product not found', 404);
     return success(res, product);
@@ -260,8 +267,69 @@ const generateUniqueSlug = async (name) => {
   return slug;
 };
 
+const upsertVariants = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product || product.sellerId !== req.user.id) throw new AppError('Not found', 404);
+
+    const { groups } = req.body;
+
+    await prisma.productVariantGroup.deleteMany({ where: { productId: id } });
+    if (groups?.length) {
+      for (const g of groups) {
+        await prisma.productVariantGroup.create({
+          data: {
+            productId: id,
+            name: g.name,
+            required: g.required ?? false,
+            maxSelect: g.maxSelect ?? 1,
+            options: {
+              create: (g.options || []).map((o) => ({
+                name: o.name,
+                priceModifier: parseFloat(o.priceModifier) || 0,
+              })),
+            },
+          },
+        });
+      }
+    }
+
+    const updated = await prisma.productVariantGroup.findMany({
+      where: { productId: id },
+      include: { options: true },
+    });
+    return success(res, updated, 'Variants saved');
+  } catch (err) { next(err); }
+};
+
+const upsertAddons = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product || product.sellerId !== req.user.id) throw new AppError('Not found', 404);
+
+    const { addons } = req.body;
+
+    await prisma.productAddon.deleteMany({ where: { productId: id } });
+    if (addons?.length) {
+      await prisma.productAddon.createMany({
+        data: addons.map((a) => ({
+          productId: id,
+          name: a.name,
+          price: parseFloat(a.price) || 0,
+        })),
+      });
+    }
+
+    const updated = await prisma.productAddon.findMany({ where: { productId: id } });
+    return success(res, updated, 'Add-ons saved');
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   listProducts, getProduct, getSellerProductById, getCategories,
   createProduct, updateProduct, deleteProduct,
   uploadProductImages, deleteProductImage, getSellerProducts, getSellerStats,
+  upsertVariants, upsertAddons,
 };

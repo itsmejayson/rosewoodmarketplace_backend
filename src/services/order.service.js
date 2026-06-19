@@ -5,7 +5,8 @@ const notificationService = require('./notification.service');
 const { getIO } = require('../config/socket');
 // Same logic as cart.controller resolveUnitPrice — kept in sync manually.
 // Priority: stamped unitPrice → sum of variant modifiers → product base price
-const resolveUnitPrice = (productPrice, opts = {}) => {
+const resolveUnitPrice = (productPrice, opts) => {
+  if (!opts) return parseFloat(productPrice);
   if (opts.unitPrice != null) return parseFloat(opts.unitPrice);
   const variants = opts.variants || [];
   const addons   = opts.addons   || [];

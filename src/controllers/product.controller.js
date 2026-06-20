@@ -17,6 +17,8 @@ const listProducts = async (req, res, next) => {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
+        { seller: { storeName: { contains: search, mode: 'insensitive' } } },
+        { seller: { fullName: { contains: search, mode: 'insensitive' } } },
       ];
     }
     if (categoryId) where.categoryId = categoryId;

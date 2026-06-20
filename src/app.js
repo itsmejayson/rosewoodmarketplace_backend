@@ -32,7 +32,6 @@ const favoriteRoutes = require('./routes/favorite.routes');
 const addressRoutes = require('./routes/address.routes');
 const reviewRoutes = require('./routes/review.routes');
 const refundRoutes = require('./routes/refund.routes');
-const disputeRoutes = require('./routes/dispute.routes');
 
 const app = express();
 
@@ -84,7 +83,6 @@ app.use('/api/favorites', favoriteRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/refunds', refundRoutes);
-app.use('/api/disputes', disputeRoutes);
 app.use('/api/push', require('./routes/push.routes'));
 
 app.use((req, res) => {

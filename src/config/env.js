@@ -24,6 +24,8 @@ const env = {
   VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
   VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
   VAPID_EMAIL: process.env.VAPID_EMAIL || 'mailto:admin@rosewoodmarketplace.com',
+
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
 };
 
 const required = ['DATABASE_URL', 'JWT_SECRET'];

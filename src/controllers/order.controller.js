@@ -83,6 +83,7 @@ const getBuyerOrderDetail = async (req, res, next) => {
           },
         },
         buyer: { select: { fullName: true, email: true, phone: true } },
+        refund: true,
       },
     });
     if (!order) throw new AppError('Order not found', 404);

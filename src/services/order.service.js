@@ -377,6 +377,13 @@ const updateOrderStatus = async ({ orderId, status, sellerId }) => {
     if (!owns) throw new AppError('Forbidden', 403);
   }
 
+  const isPickup = order.fulfillmentType === 'PICKUP';
+  const descriptions = {
+    PROCESSING: isPickup ? 'Seller is preparing the order for pickup' : 'Order is being processed by the seller',
+    SHIPPED: 'Order has been shipped and is on the way',
+    DELIVERED: isPickup ? 'Buyer has picked up the order' : 'Order has been delivered to the buyer',
+  };
+
   const [updated] = await Promise.all([
     prisma.order.update({ where: { id: orderId }, data: { status } }),
     prisma.transaction.update({
@@ -384,7 +391,10 @@ const updateOrderStatus = async ({ orderId, status, sellerId }) => {
       data: {
         orderStatus: status,
         logs: {
-          create: { event: `STATUS_${status}`, description: `Order status updated to ${status}` },
+          create: {
+            event: isPickup && status === 'DELIVERED' ? 'ORDER_PICKED_UP' : `STATUS_${status}`,
+            description: descriptions[status] || `Order status updated to ${status}`,
+          },
         },
       },
     }),

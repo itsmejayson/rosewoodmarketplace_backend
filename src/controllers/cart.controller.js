@@ -49,13 +49,22 @@ const getCart = async (req, res, next) => {
       return success(res, { cartItems: [], subtotal: 0, itemCount: 0 });
     }
 
-    const subtotal = cart.cartItems.reduce((sum, item) => {
+    // Filter out orphaned items (product deleted after being added to cart)
+    const validItems = cart.cartItems.filter((item) => item.product != null);
+
+    // Silently clean up orphaned cart items so future requests don't fail
+    const orphanedIds = cart.cartItems.filter((i) => !i.product).map((i) => i.id);
+    if (orphanedIds.length > 0) {
+      await prisma.cartItem.deleteMany({ where: { id: { in: orphanedIds } } });
+    }
+
+    const subtotal = validItems.reduce((sum, item) => {
       const unitPrice = resolveUnitPrice(item.product.price, item.selectedOptions);
       return sum + unitPrice * item.quantity;
     }, 0);
-    const itemCount = cart.cartItems.reduce((sum, item) => sum + item.quantity, 0);
+    const itemCount = validItems.reduce((sum, item) => sum + item.quantity, 0);
 
-    return success(res, { ...cart, subtotal, itemCount });
+    return success(res, { ...cart, cartItems: validItems, subtotal, itemCount });
   } catch (err) { next(err); }
 };
 

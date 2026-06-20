@@ -34,6 +34,7 @@ const reviewRoutes = require('./routes/review.routes');
 const refundRoutes = require('./routes/refund.routes');
 const adminRoutes = require('./routes/admin.routes');
 const aiRoutes = require('./routes/ai.routes');
+const reportRoutes = require('./routes/report.routes');
 const appSettings = require('./config/settings');
 
 const app = express();
@@ -89,6 +90,7 @@ app.use('/api/refunds', refundRoutes);
 app.use('/api/push', require('./routes/push.routes'));
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Public: read system settings (no auth required)
 app.get('/api/settings', (req, res) => {

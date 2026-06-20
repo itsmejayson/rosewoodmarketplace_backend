@@ -250,6 +250,11 @@ router.get('/sellers', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ── Public settings endpoint (no auth needed for frontend to read AI flag) ────
-// Mounted separately in app.js under /api/settings
+// ── Reports ───────────────────────────────────────────────────────────────────
+
+const { listReports, updateReport } = require('../controllers/report.controller');
+
+router.get('/reports', listReports);
+router.patch('/reports/:id', updateReport);
+
 module.exports = router;

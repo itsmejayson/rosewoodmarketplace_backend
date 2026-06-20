@@ -101,9 +101,10 @@ router.delete('/products/:id', async (req, res, next) => {
     const product = await prisma.product.findUnique({ where: { id: req.params.id } });
     if (!product) throw new AppError('Product not found', 404);
 
-    // Remove from any carts first to avoid FK constraint violations
+    // Remove from any carts/favorites/reviews first to avoid FK constraint violations
     await prisma.cartItem.deleteMany({ where: { productId: req.params.id } });
     await prisma.favorite.deleteMany({ where: { productId: req.params.id } });
+    await prisma.review.deleteMany({ where: { productId: req.params.id } });
 
     await prisma.product.delete({ where: { id: req.params.id } });
     return success(res, null, 'Product deleted');
@@ -149,7 +150,20 @@ router.delete('/sellers/:sellerId/cleanup', async (req, res, next) => {
     await prisma.transactionLog.deleteMany({ where: { transactionId: { in: txnIds } } });
     await prisma.transaction.deleteMany({ where: { sellerId } });
 
-    // Delete orders belonging only to this seller (order items for this seller)
+    // Get orders that have items from this seller
+    const sellerOrderItems = await prisma.orderItem.findMany({ where: { sellerId }, select: { orderId: true } });
+    const orderIds = [...new Set(sellerOrderItems.map((oi) => oi.orderId))];
+
+    // Delete reviews referencing this seller's products (no cascade from Product)
+    await prisma.review.deleteMany({ where: { productId: { in: productIds } } });
+
+    // Delete refunds and disputes tied to those orders (no cascade from Order)
+    if (orderIds.length) {
+      await prisma.refund.deleteMany({ where: { orderId: { in: orderIds } } });
+      await prisma.dispute.deleteMany({ where: { orderId: { in: orderIds } } });
+    }
+
+    // Delete order items for this seller
     await prisma.orderItem.deleteMany({ where: { sellerId } });
 
     // Delete products

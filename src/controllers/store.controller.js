@@ -97,12 +97,17 @@ const getStore = async (req, res, next) => {
 
 const updateStoreSettings = async (req, res, next) => {
   try {
-    const { defaultDeliveryFee, storeDescription, storeAddress } = req.body;
+    const { defaultDeliveryFee, freeDeliveryThreshold, storeDescription, storeAddress } = req.body;
 
     const updated = await prisma.user.update({
       where: { id: req.user.id },
       data: {
         ...(defaultDeliveryFee !== undefined && { defaultDeliveryFee: parseFloat(defaultDeliveryFee) }),
+        ...(freeDeliveryThreshold !== undefined && {
+          freeDeliveryThreshold: freeDeliveryThreshold === '' || freeDeliveryThreshold === null
+            ? null
+            : parseFloat(freeDeliveryThreshold),
+        }),
         ...(storeDescription !== undefined && { storeDescription }),
         ...(storeAddress !== undefined && { storeAddress }),
       },
@@ -110,6 +115,7 @@ const updateStoreSettings = async (req, res, next) => {
         id: true,
         storeName: true,
         defaultDeliveryFee: true,
+        freeDeliveryThreshold: true,
         storeDescription: true,
         storeAddress: true,
       },

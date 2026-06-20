@@ -90,6 +90,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   defaultDeliveryFee     Decimal? @db.Decimal(10, 2)
+  freeDeliveryThreshold  Decimal? @db.Decimal(10, 2)
   storeDescription       String?
   storeAddress           String?
   proofDocument          String?

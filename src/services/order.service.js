@@ -68,15 +68,35 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
   const subtotal = itemsToOrder.reduce((sum, i) =>
     sum + resolveUnitPrice(i.product.price, i.selectedOptions) * i.quantity
   , 0);
-  const shippingFee = 0;
-  const tax = 0;
-  const totalAmount = subtotal;
 
   const orderNumber = generateOrderNumber();
   const method = (paymentMethod || 'CASH').toUpperCase();
   const fulfillment = (fulfillmentType || 'DELIVERY').toUpperCase();
-  // PICKUP orders skip seller confirmation and go straight to AWAITING_PAYMENT
-  const initialStatus = fulfillment === 'PICKUP' ? 'AWAITING_PAYMENT' : 'PENDING';
+
+  // Auto-calculate delivery fee from seller settings
+  let deliveryFee = 0;
+  let deliveryFeeStatus = 'NOT_SET';
+  if (fulfillment === 'DELIVERY') {
+    const sellerIds = [...new Set(itemsToOrder.map((i) => i.product.sellerId))];
+    const seller = await prisma.user.findUnique({
+      where: { id: sellerIds[0] },
+      select: { defaultDeliveryFee: true, freeDeliveryThreshold: true },
+    });
+    const defaultFee = seller?.defaultDeliveryFee ? parseFloat(seller.defaultDeliveryFee) : 0;
+    const threshold = seller?.freeDeliveryThreshold ? parseFloat(seller.freeDeliveryThreshold) : null;
+    if (threshold !== null && subtotal >= threshold) {
+      deliveryFee = 0;
+      deliveryFeeStatus = 'INCLUDED';
+    } else if (defaultFee > 0) {
+      deliveryFee = defaultFee;
+      deliveryFeeStatus = 'INCLUDED';
+    }
+  }
+
+  const tax = 0;
+  const totalAmount = subtotal + deliveryFee;
+  // Both PICKUP and DELIVERY go straight to AWAITING_PAYMENT — no seller confirmation step
+  const initialStatus = 'AWAITING_PAYMENT';
 
   // For GCash: pre-generate reference number only
   let referenceNumber = null;
@@ -93,9 +113,11 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
       paymentMethod: method,
       fulfillmentType: fulfillment,
       subtotal,
-      shippingFee,
+      shippingFee: 0,
       tax,
       totalAmount,
+      deliveryFee: deliveryFee > 0 ? deliveryFee : undefined,
+      deliveryFeeStatus,
       ...shippingDetails,
       orderItems: {
         create: itemsToOrder.map((item) => {
@@ -133,7 +155,7 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
       logs: {
         create: {
           event: 'ORDER_CREATED',
-          description: `Order ${orderNumber} created via ${method} (${fulfillment})`,
+          description: `Order ${orderNumber} created via ${method} (${fulfillment})${deliveryFee > 0 ? `. Delivery fee: ₱${deliveryFee.toFixed(2)}` : ''}`,
         },
       },
     },

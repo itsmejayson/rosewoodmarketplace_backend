@@ -52,6 +52,7 @@ const getStore = async (req, res, next) => {
         profileImage: true,
         createdAt: true,
         defaultDeliveryFee: true,
+        freeDeliveryThreshold: true,
         storeDescription: true,
         storeAddress: true,
       },

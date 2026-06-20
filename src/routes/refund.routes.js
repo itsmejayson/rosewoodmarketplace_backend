@@ -83,11 +83,14 @@ router.patch('/:orderId/process', authenticate, authorize('SELLER', 'ADMIN'), as
       ...(approved
         ? [
             prisma.order.update({ where: { id: orderId }, data: { status: 'REFUNDED' } }),
-            // Decrement salesCount for each product in the order
+            // Restore stock and reverse salesCount for each refunded product
             ...refund.order.orderItems.map((item) =>
               prisma.product.update({
                 where: { id: item.productId },
-                data: { salesCount: { decrement: item.quantity } },
+                data: {
+                  stockQty: { increment: item.quantity },
+                  salesCount: { decrement: item.quantity },
+                },
               })
             ),
           ]

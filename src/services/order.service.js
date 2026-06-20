@@ -47,9 +47,7 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
 
   for (const item of cart.cartItems) {
     if (!item.product.isAvailable) throw new AppError(`"${item.product.name}" is no longer available`, 400);
-    if (item.product.stockQty < item.quantity) {
-      throw new AppError(`Only ${item.product.stockQty} units of "${item.product.name}" available`, 400);
-    }
+    // Stock was already reserved when items were added to cart — no need to re-validate here
   }
 
   const subtotal = cart.cartItems.reduce((sum, i) =>
@@ -141,6 +139,11 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
     const io = getIO();
     sellerIds.forEach((sid) => io.to(`seller:${sid}`).emit('newOrder', { orderId: order.id, orderNumber }));
   } catch {}
+
+  // Remove cart items WITHOUT restoring stock — stock was reserved at cart-add time
+  // and is now committed to this order. clearCart on the frontend finds an empty cart
+  // and skips the stock-restore path.
+  await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
 
   return { order, transaction };
 };
@@ -353,15 +356,14 @@ const updateOrderStatus = async ({ orderId, status, sellerId }) => {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Stock was already decremented when items were added to the cart.
+// This function only increments salesCount and fires low-stock alerts on payment.
 const _deductStock = async (orderId) => {
   const items = await prisma.orderItem.findMany({ where: { orderId } });
   for (const item of items) {
     const product = await prisma.product.update({
       where: { id: item.productId },
-      data: {
-        stockQty: { decrement: item.quantity },
-        salesCount: { increment: item.quantity },
-      },
+      data: { salesCount: { increment: item.quantity } },
     });
     if (product.stockQty <= 10) {
       const notif = require('./notification.service');

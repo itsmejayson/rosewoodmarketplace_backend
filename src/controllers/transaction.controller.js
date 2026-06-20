@@ -15,10 +15,11 @@ const getBuyerTransactions = async (req, res, next) => {
         include: {
           order: {
             select: {
-              orderNumber: true, status: true, totalAmount: true, createdAt: true,
+              orderNumber: true, status: true, totalAmount: true, createdAt: true, fulfillmentType: true,
               orderItems: { select: { productName: true, quantity: true, unitPrice: true } },
             },
           },
+          seller: { select: { id: true, fullName: true, storeName: true } },
           logs: { orderBy: { createdAt: 'desc' } },
         },
         orderBy: { createdAt: 'desc' },
@@ -46,7 +47,7 @@ const getSellerTransactions = async (req, res, next) => {
         include: {
           order: {
             select: {
-              orderNumber: true, status: true, totalAmount: true, createdAt: true,
+              orderNumber: true, status: true, totalAmount: true, createdAt: true, fulfillmentType: true,
               buyer: { select: { fullName: true, email: true } },
               orderItems: { where: { sellerId: req.user.id } },
             },

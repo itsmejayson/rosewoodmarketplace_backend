@@ -67,13 +67,7 @@ const addItem = async (req, res, next) => {
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new AppError('Product not found', 404);
     if (!product.isAvailable) throw new AppError('Product is not available', 400);
-    // stockQty reflects live available inventory (already reduced by other carts)
-    if (product.stockQty < qty) {
-      throw new AppError(
-        product.stockQty === 0 ? 'This product is out of stock' : `Only ${product.stockQty} units available`,
-        400
-      );
-    }
+    if (product.stockQty <= 0) throw new AppError('This product is out of stock', 400);
 
     const cart = await prisma.cart.upsert({
       where: { buyerId: req.user.id },
@@ -95,12 +89,6 @@ const addItem = async (req, res, next) => {
         data: { cartId: cart.id, productId, quantity: qty, selectedOptions: selectedOptions ?? undefined },
       });
     }
-
-    // Reserve stock immediately so other buyers see accurate availability
-    await prisma.product.update({
-      where: { id: productId },
-      data: { stockQty: { decrement: qty } },
-    });
 
     return success(res, cartItem, 'Item added to cart');
   } catch (err) { next(err); }
@@ -126,33 +114,10 @@ const updateItem = async (req, res, next) => {
     }
     if (!currentItem || currentItem.cartId !== cart.id) throw new AppError('Item not found in cart', 404);
 
-    const diff = quantity - currentItem.quantity; // positive = need more stock, negative = releasing stock
-
-    if (diff > 0) {
-      // Increasing quantity — check available stock
-      const product = await prisma.product.findUnique({ where: { id: productId } });
-      if (product && product.stockQty < diff) {
-        throw new AppError(
-          product.stockQty === 0 ? 'No more stock available' : `Only ${product.stockQty} more units available`,
-          400
-        );
-      }
-    }
-
     const cartItem = await prisma.cartItem.update({
       where: { id: currentItem.id },
       data: { quantity },
     });
-
-    // Adjust reserved stock by the diff
-    if (diff !== 0) {
-      await prisma.product.update({
-        where: { id: productId },
-        data: diff > 0
-          ? { stockQty: { decrement: diff } }
-          : { stockQty: { increment: Math.abs(diff) } },
-      });
-    }
 
     return success(res, cartItem, 'Cart updated');
   } catch (err) { next(err); }
@@ -179,12 +144,6 @@ const removeItem = async (req, res, next) => {
       await prisma.cartItem.delete({ where: { id: item.id } });
     }
 
-    // Release reserved stock back to inventory
-    await prisma.product.update({
-      where: { id: item.productId },
-      data: { stockQty: { increment: item.quantity } },
-    });
-
     return success(res, null, 'Item removed from cart');
   } catch (err) { next(err); }
 };
@@ -196,15 +155,6 @@ const clearCart = async (req, res, next) => {
       include: { cartItems: true },
     });
     if (cart && cart.cartItems.length > 0) {
-      // Release all reserved stock before clearing
-      await Promise.all(
-        cart.cartItems.map((item) =>
-          prisma.product.update({
-            where: { id: item.productId },
-            data: { stockQty: { increment: item.quantity } },
-          })
-        )
-      );
       await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
     }
     return success(res, null, 'Cart cleared');

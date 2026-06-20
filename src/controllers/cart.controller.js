@@ -37,7 +37,7 @@ const getCart = async (req, res, next) => {
             product: {
               include: {
                 images: { where: { isPrimary: true }, take: 1 },
-                seller: { select: { id: true, fullName: true } },
+                seller: { select: { id: true, fullName: true, storeName: true } },
               },
             },
           },
@@ -79,17 +79,7 @@ const addItem = async (req, res, next) => {
       where: { buyerId: req.user.id },
       create: { buyerId: req.user.id },
       update: {},
-      include: { cartItems: { include: { product: { select: { sellerId: true } } }, take: 1 } },
     });
-    if (cart.cartItems.length > 0) {
-      const cartSellerId = cart.cartItems[0].product.sellerId;
-      if (cartSellerId !== product.sellerId) {
-        throw new AppError(
-          'Your cart already has items from a different seller. Please clear your cart first.',
-          400
-        );
-      }
-    }
 
     const candidates = await prisma.cartItem.findMany({ where: { cartId: cart.id, productId } });
     const match = candidates.find((c) => isSameOptions(c.selectedOptions, selectedOptions));

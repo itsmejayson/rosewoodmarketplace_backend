@@ -9,12 +9,13 @@ const notifService = require('../services/notification.service');
 
 const checkout = async (req, res, next) => {
   try {
-    const { paymentMethod, fulfillmentType, ...shippingDetails } = req.body;
+    const { paymentMethod, fulfillmentType, sellerId, ...shippingDetails } = req.body;
     const result = await orderService.createOrderFromCart({
       buyerId: req.user.id,
       shippingDetails,
       paymentMethod,
       fulfillmentType,
+      sellerId: sellerId || undefined,
     });
     return created(res, result, 'Order placed successfully');
   } catch (err) { next(err); }

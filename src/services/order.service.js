@@ -29,7 +29,7 @@ const generateReference = () =>
 
 // ── Create order from cart ────────────────────────────────────────────────────
 
-const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fulfillmentType }) => {
+const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fulfillmentType, sellerId }) => {
   const cart = await prisma.cart.findUnique({
     where: { buyerId },
     include: {
@@ -45,12 +45,19 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
 
   if (!cart || cart.cartItems.length === 0) throw new AppError('Cart is empty', 400);
 
-  for (const item of cart.cartItems) {
+  // Filter to specific seller's items when checking out per-store
+  const itemsToOrder = sellerId
+    ? cart.cartItems.filter((i) => i.product.sellerId === sellerId)
+    : cart.cartItems;
+
+  if (itemsToOrder.length === 0) throw new AppError('No items found for this store', 400);
+
+  for (const item of itemsToOrder) {
     if (!item.product.isAvailable) throw new AppError(`"${item.product.name}" is no longer available`, 400);
     // Stock was already reserved when items were added to cart — no need to re-validate here
   }
 
-  const subtotal = cart.cartItems.reduce((sum, i) =>
+  const subtotal = itemsToOrder.reduce((sum, i) =>
     sum + resolveUnitPrice(i.product.price, i.selectedOptions) * i.quantity
   , 0);
   const shippingFee = 0;
@@ -83,7 +90,7 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
       totalAmount,
       ...shippingDetails,
       orderItems: {
-        create: cart.cartItems.map((item) => {
+        create: itemsToOrder.map((item) => {
           const unitPrice = resolveUnitPrice(item.product.price, item.selectedOptions);
           return {
             productId: item.productId,
@@ -101,7 +108,7 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
     include: { orderItems: true },
   });
 
-  const sellerIds = [...new Set(cart.cartItems.map((i) => i.product.sellerId))];
+  const sellerIds = [...new Set(itemsToOrder.map((i) => i.product.sellerId))];
 
   const transaction = await prisma.transaction.create({
     data: {
@@ -140,10 +147,10 @@ const createOrderFromCart = async ({ buyerId, shippingDetails, paymentMethod, fu
     sellerIds.forEach((sid) => io.to(`seller:${sid}`).emit('newOrder', { orderId: order.id, orderNumber }));
   } catch {}
 
-  // Remove cart items WITHOUT restoring stock — stock was reserved at cart-add time
-  // and is now committed to this order. clearCart on the frontend finds an empty cart
-  // and skips the stock-restore path.
-  await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
+  // Remove only the checked-out items WITHOUT restoring stock — stock was reserved at
+  // cart-add time and is now committed to this order. Other store items stay in the cart.
+  const orderedItemIds = itemsToOrder.map((i) => i.id);
+  await prisma.cartItem.deleteMany({ where: { id: { in: orderedItemIds } } });
 
   return { order, transaction };
 };

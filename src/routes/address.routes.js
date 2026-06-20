@@ -20,8 +20,8 @@ router.post('/', authenticate, async (req, res, next) => {
   try {
     const { label, fullName, phone, address, city, state, zip, country, isDefault } = req.body;
 
-    if (!fullName || !phone || !address || !city || !state || !zip) {
-      throw new AppError('fullName, phone, address, city, state, and zip are required', 400);
+    if (!fullName || !phone || !address || !city || !state) {
+      throw new AppError('fullName, phone, address, city, and state are required', 400);
     }
 
     if (isDefault) {
@@ -40,7 +40,7 @@ router.post('/', authenticate, async (req, res, next) => {
         address,
         city,
         state,
-        zip,
+        zip: zip || 'N/A',
         country: country || 'Philippines',
         isDefault: !!isDefault,
       },

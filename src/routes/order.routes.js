@@ -20,5 +20,6 @@ router.get('/seller-orders/:id', authorize('SELLER', 'ADMIN'), orderController.g
 router.post('/:orderId/approve-payment', authorize('SELLER', 'ADMIN'), orderController.approvePayment);
 router.post('/:orderId/confirm-cash', authorize('SELLER', 'ADMIN'), orderController.confirmCashPayment);
 router.patch('/:id/status', authorize('SELLER', 'ADMIN'), orderController.updateOrderStatus);
+router.post('/:id/ready-for-pickup', authorize('SELLER', 'ADMIN'), orderController.notifyReadyForPickup);
 
 module.exports = router;

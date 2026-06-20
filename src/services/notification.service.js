@@ -140,6 +140,16 @@ const notifyPaymentVerification = async ({ sellerId, orderId, orderNumber }) => 
   });
 };
 
+const notifyReadyForPickup = async ({ buyerId, orderId, orderNumber }) => {
+  await createNotification({
+    userId: buyerId,
+    type: 'ORDER_STATUS_UPDATE',
+    title: 'Ready for Pickup! 🛍️',
+    message: `Your order #${orderNumber} is ready for pickup. Please come to the store.`,
+    data: { orderId, orderNumber, actionUrl: `/orders/${orderId}` },
+  });
+};
+
 const notifyLowStock = async ({ sellerId, productId, productName, stockQty }) => {
   await createNotification({
     userId: sellerId,
@@ -156,5 +166,6 @@ module.exports = {
   notifyOrderStatusChange,
   notifyPayment,
   notifyPaymentVerification,
+  notifyReadyForPickup,
   notifyLowStock,
 };

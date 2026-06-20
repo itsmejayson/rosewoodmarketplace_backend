@@ -413,9 +413,40 @@ const payDeliveryFee = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+const notifyReadyForPickup = async (req, res, next) => {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, orderItems: { some: { sellerId: req.user.id } } },
+      include: { buyer: { select: { id: true } } },
+    });
+    if (!order) throw new AppError('Order not found', 404);
+    if (order.fulfillmentType !== 'PICKUP') throw new AppError('This order is not a pickup order', 400);
+    if (!['PAID', 'PROCESSING'].includes(order.status)) throw new AppError('Order must be paid before notifying pickup', 400);
+
+    // Move to PROCESSING if still PAID, so the status reflects preparation
+    if (order.status === 'PAID') {
+      await prisma.order.update({ where: { id: order.id }, data: { status: 'PROCESSING' } });
+    }
+
+    await notifService.notifyReadyForPickup({
+      buyerId: order.buyer.id,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+    });
+
+    // Emit socket event to buyer
+    try {
+      const io = getIO();
+      io.to(`user:${order.buyer.id}`).emit('readyForPickup', { orderId: order.id, orderNumber: order.orderNumber });
+    } catch {}
+
+    return success(res, {}, 'Buyer notified that order is ready for pickup');
+  } catch (err) { next(err); }
+};
+
 module.exports = {
   checkout, submitGcashReceipt,
   getBuyerOrders, getBuyerOrderDetail,
   getSellerOrders, getSellerOrderDetail, approvePayment, confirmCashPayment, updateOrderStatus, cancelOrder,
-  confirmOrder, setDeliveryFee, payDeliveryFee,
+  confirmOrder, setDeliveryFee, payDeliveryFee, notifyReadyForPickup,
 };

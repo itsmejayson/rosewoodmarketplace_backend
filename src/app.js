@@ -32,6 +32,9 @@ const favoriteRoutes = require('./routes/favorite.routes');
 const addressRoutes = require('./routes/address.routes');
 const reviewRoutes = require('./routes/review.routes');
 const refundRoutes = require('./routes/refund.routes');
+const adminRoutes = require('./routes/admin.routes');
+const aiRoutes = require('./routes/ai.routes');
+const appSettings = require('./config/settings');
 
 const app = express();
 
@@ -84,6 +87,13 @@ app.use('/api/addresses', addressRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/refunds', refundRoutes);
 app.use('/api/push', require('./routes/push.routes'));
+app.use('/api/admin', adminRoutes);
+app.use('/api/ai', aiRoutes);
+
+// Public: read system settings (no auth required)
+app.get('/api/settings', (req, res) => {
+  res.json({ success: true, data: { ...appSettings } });
+});
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.path} not found` });

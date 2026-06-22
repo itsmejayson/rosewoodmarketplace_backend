@@ -97,6 +97,9 @@ app.get('/api/settings', (req, res) => {
   res.json({ success: true, data: { ...appSettings } });
 });
 
+// Public: FAQ list
+app.use('/api/faqs', require('./routes/faq.routes'));
+
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route ${req.path} not found` });
 });

@@ -5,14 +5,16 @@ const { initSocket } = require('./config/socket');
 const env = require('./config/env');
 const logger = require('./utils/logger');
 const { startAutoCancelJob } = require('./jobs/autoCancelOrders');
+const { loadFromDb } = require('./services/settingsService');
 
 const server = http.createServer(app);
 
 initSocket(server);
 
-server.listen(env.PORT, () => {
+server.listen(env.PORT, async () => {
   logger.info(`Server running in ${env.NODE_ENV} mode on port ${env.PORT}`);
   logger.info(`Health check: http://localhost:${env.PORT}/health`);
+  await loadFromDb();
   startAutoCancelJob();
 });
 

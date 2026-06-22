@@ -5,6 +5,10 @@ const { authorize } = require('../middleware/role.middleware');
 const { success } = require('../utils/response');
 const { AppError } = require('../middleware/error.middleware');
 const appSettings = require('../config/settings');
+const { saveToDb } = require('../services/settingsService');
+const multer = require('multer');
+const { uploadBuffer, deleteImage } = require('../services/cloudinary.service');
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 /**
  * All admin routes are protected by two middleware layers:
@@ -40,9 +44,14 @@ router.get('/settings', (req, res) => {
  * Note: settings are NOT persisted to a database.  A server restart will
  * reset them to the defaults defined in config/settings.js.
  */
-router.put('/settings', (req, res) => {
-  Object.assign(appSettings, req.body);
-  return success(res, { ...appSettings }, 'Settings updated');
+router.put('/settings', async (req, res, next) => {
+  try {
+    Object.assign(appSettings, req.body);
+    // Persist branding keys to DB so they survive restarts
+    const persistJobs = Object.entries(req.body).map(([k, v]) => saveToDb(k, v));
+    await Promise.all(persistJobs);
+    return success(res, { ...appSettings }, 'Settings updated');
+  } catch (err) { next(err); }
 });
 
 // ── Products: list all (across all sellers) ───────────────────────────────────
@@ -270,5 +279,92 @@ const { listReports, updateReport } = require('../controllers/report.controller'
 
 router.get('/reports', listReports);
 router.patch('/reports/:id', updateReport);
+
+// ── Categories: full admin CRUD ───────────────────────────────────────────────
+
+const slugify = require('../utils/slugify');
+
+router.get('/categories', async (req, res, next) => {
+  try {
+    const categories = await prisma.category.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+    return success(res, categories);
+  } catch (err) { next(err); }
+});
+
+router.post('/categories', async (req, res, next) => {
+  try {
+    const { name, icon, description, sortOrder } = req.body;
+    if (!name?.trim()) throw new AppError('Name is required', 400);
+    const slug = slugify(name.trim());
+    const existing = await prisma.category.findFirst({ where: { OR: [{ name: name.trim() }, { slug }] } });
+    if (existing) throw new AppError('A category with that name already exists', 409);
+    const category = await prisma.category.create({
+      data: { name: name.trim(), slug, icon: icon || null, description: description || null, sortOrder: sortOrder ?? 0 },
+    });
+    return success(res, category, 'Category created');
+  } catch (err) { next(err); }
+});
+
+router.put('/categories/:id', async (req, res, next) => {
+  try {
+    const { name, icon, description, isActive, sortOrder } = req.body;
+    const existing = await prisma.category.findUnique({ where: { id: req.params.id } });
+    if (!existing) throw new AppError('Category not found', 404);
+    const data = {};
+    if (name !== undefined) {
+      data.name = name.trim();
+      data.slug = slugify(name.trim());
+    }
+    if (icon !== undefined) data.icon = icon || null;
+    if (description !== undefined) data.description = description || null;
+    if (isActive !== undefined) data.isActive = isActive;
+    if (sortOrder !== undefined) data.sortOrder = sortOrder;
+    const updated = await prisma.category.update({ where: { id: req.params.id }, data });
+    return success(res, updated, 'Category updated');
+  } catch (err) { next(err); }
+});
+
+router.delete('/categories/:id', async (req, res, next) => {
+  try {
+    const category = await prisma.category.findUnique({ where: { id: req.params.id } });
+    if (!category) throw new AppError('Category not found', 404);
+    const productCount = await prisma.product.count({ where: { categoryId: req.params.id } });
+    if (productCount > 0) {
+      // Soft-delete if products exist to preserve data integrity
+      await prisma.category.update({ where: { id: req.params.id }, data: { isActive: false } });
+      return success(res, null, `Category hidden (${productCount} products still reference it)`);
+    }
+    await prisma.category.delete({ where: { id: req.params.id } });
+    return success(res, null, 'Category deleted');
+  } catch (err) { next(err); }
+});
+
+// ── Logo upload ───────────────────────────────────────────────────────────────
+
+router.post('/settings/logo', logoUpload.single('logo'), async (req, res, next) => {
+  try {
+    if (!req.file) throw new AppError('No file uploaded', 400);
+    // Remove old logo from Cloudinary if it exists
+    const oldPublicId = appSettings.logoPublicId;
+    if (oldPublicId) await deleteImage(oldPublicId).catch(() => {});
+    const result = await uploadBuffer(req.file.buffer, { folder: 'logos', transformation: [{ width: 200, height: 200, crop: 'limit' }] });
+    appSettings.logoUrl = result.secure_url;
+    appSettings.logoPublicId = result.public_id;
+    await saveToDb('logoUrl', result.secure_url);
+    await saveToDb('logoPublicId', result.public_id);
+    return success(res, { logoUrl: result.secure_url }, 'Logo uploaded');
+  } catch (err) { next(err); }
+});
+
+router.delete('/settings/logo', async (req, res, next) => {
+  try {
+    if (appSettings.logoPublicId) await deleteImage(appSettings.logoPublicId).catch(() => {});
+    appSettings.logoUrl = null;
+    appSettings.logoPublicId = null;
+    await saveToDb('logoUrl', '');
+    await saveToDb('logoPublicId', '');
+    return success(res, null, 'Logo removed');
+  } catch (err) { next(err); }
+});
 
 module.exports = router;

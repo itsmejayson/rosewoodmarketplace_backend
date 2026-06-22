@@ -119,9 +119,11 @@ model Category {
   id          String   @id @default(uuid())
   name        String   @unique
   slug        String   @unique
+  icon        String?
   description String?
   imageUrl    String?
   isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -518,4 +520,27 @@ model Dispute {
 
   @@index([status])
   @@map("disputes")
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model Faq {
+  id        String   @id @default(uuid())
+  section   String
+  question  String
+  answer    String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([section])
+  @@index([isActive, sortOrder])
+  @@map("faqs")
 }
